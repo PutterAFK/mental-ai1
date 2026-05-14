@@ -3,6 +3,7 @@ import cors from "cors";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import dotenv from "dotenv";
+import fs from "fs";
 
 // โหลดค่าจาก .env
 dotenv.config();
@@ -12,7 +13,7 @@ app.use(cors());
 app.use(express.json());
 
 /* =========================
-   🔐 API KEY (อ่านจาก .env)
+   🔐 API KEY
 ========================= */
 const API_KEY = process.env.API_KEY;
 
@@ -54,40 +55,88 @@ const memory = {};
 const MAX_MEMORY = 6;
 
 /* =========================
+   👍 FEEDBACK SYSTEM
+========================= */
+const FEEDBACK_FILE = "feedback.json";
+
+let feedbackData = [];
+
+if (fs.existsSync(FEEDBACK_FILE)) {
+  try {
+    const raw = fs.readFileSync(
+      FEEDBACK_FILE,
+      "utf8"
+    );
+
+    feedbackData =
+      raw.trim() !== ""
+        ? JSON.parse(raw)
+        : [];
+  } catch {
+    feedbackData = [];
+  }
+}
+
+/* =========================
    📥 LOAD KNOWLEDGE
 ========================= */
 async function loadKnowledge() {
   for (const link of links) {
     try {
-      const res = await axios.get(link, { timeout: 10000 });
-      const $ = cheerio.load(res.data);
+      const res = await axios.get(
+        link,
+        { timeout: 10000 }
+      );
+
+      const $ = cheerio.load(
+        res.data
+      );
 
       const text = $("body")
         .text()
         .replace(/\s+/g, " ");
 
-      const chunks = text.match(/.{1,300}/g) || [];
+      const chunks =
+        text.match(/.{1,300}/g) || [];
 
-      KNOWLEDGE.push(...chunks);
+      KNOWLEDGE.push(
+        ...chunks
+      );
 
-    } catch (err) {
-      console.log("โหลดไม่ได้:", link);
+    } catch {
+      console.log(
+        "โหลดไม่ได้:",
+        link
+      );
     }
   }
 
-  console.log("โหลดความรู้เสร็จ:", KNOWLEDGE.length, "chunks");
+  console.log(
+    "โหลดความรู้เสร็จ:",
+    KNOWLEDGE.length,
+    "chunks"
+  );
 }
 
 /* =========================
    🔍 SEARCH
 ========================= */
-function scoreText(question, text) {
-  const words = question.toLowerCase().split(/\s+/);
+function scoreText(
+  question,
+  text
+) {
+  const words =
+    question.toLowerCase()
+      .split(/\s+/);
 
   let score = 0;
 
   for (const word of words) {
-    if (word.length > 2 && text.toLowerCase().includes(word)) {
+    if (
+      word.length > 2 &&
+      text.toLowerCase()
+        .includes(word)
+    ) {
       score++;
     }
   }
@@ -95,36 +144,64 @@ function scoreText(question, text) {
   return score;
 }
 
-function findBestContexts(question, k = 3) {
-  const scored = KNOWLEDGE.map(text => ({
-    text,
-    score: scoreText(question, text)
-  }));
+function findBestContexts(
+  question,
+  k = 3
+) {
+  const scored =
+    KNOWLEDGE.map(text => ({
+      text,
+      score: scoreText(
+        question,
+        text
+      )
+    }));
 
-  scored.sort((a, b) => b.score - a.score);
+  scored.sort(
+    (a, b) =>
+      b.score - a.score
+  );
 
-  return scored.slice(0, k).map(item => item.text);
+  return scored
+    .slice(0, k)
+    .map(
+      item => item.text
+    );
 }
 
 /* =========================
    🧠 MOOD ANALYSIS
 ========================= */
-function analyzeMood(message) {
-  const msg = message.toLowerCase();
+function analyzeMood(
+  message
+) {
+  const msg =
+    message.toLowerCase();
 
-  if (msg.includes("อยากตาย") || msg.includes("ไม่อยากอยู่")) {
+  if (
+    msg.includes("อยากตาย") ||
+    msg.includes("ไม่อยากอยู่")
+  ) {
     return "risk";
   }
 
-  if (msg.includes("เครียด") || msg.includes("กังวล")) {
+  if (
+    msg.includes("เครียด") ||
+    msg.includes("กังวล")
+  ) {
     return "stress";
   }
 
-  if (msg.includes("เหนื่อย") || msg.includes("หมดแรง")) {
+  if (
+    msg.includes("เหนื่อย") ||
+    msg.includes("หมดแรง")
+  ) {
     return "tired";
   }
 
-  if (msg.includes("นอนไม่หลับ")) {
+  if (
+    msg.includes("นอนไม่หลับ")
+  ) {
     return "sleep";
   }
 
@@ -132,7 +209,7 @@ function analyzeMood(message) {
 }
 
 /* =========================
-   💬 REPLY TEMPLATES
+   💬 REPLIES
 ========================= */
 const replies = {
   stress: [
@@ -157,76 +234,179 @@ function safetyMessage() {
 /* =========================
    🧠 GENERATE REPLY
 ========================= */
-function generateReply({ message, mood, contexts, user_id }) {
-  if (mood === "risk") {
+function generateReply({
+  mood,
+  contexts,
+  user_id
+}) {
+
+  if (
+    mood === "risk"
+  ) {
     return safetyMessage();
   }
 
-  const history = memory[user_id] || [];
-  const lastMessage = history.slice(-1).join(" ");
+  const history =
+    memory[user_id] || [];
 
-  const pool = replies[mood] || replies.normal;
+  const lastMessage =
+    history
+      .slice(-1)
+      .join(" ");
+
+  const pool =
+    replies[mood] ||
+    replies.normal;
+
   const baseReply =
-    pool[Math.floor(Math.random() * pool.length)];
+    pool[
+      Math.floor(
+        Math.random() *
+        pool.length
+      )
+    ];
 
   let contextInfo = "";
-  if (contexts.length > 0) {
+
+  if (
+    contexts.length > 0
+  ) {
     contextInfo =
-      " จากข้อมูลที่เกี่ยวข้อง: " +
-      contexts[0].slice(0, 80) +
+      " จากข้อมูล: " +
+      contexts[0]
+        .slice(0, 80) +
       "...";
   }
 
   let continuity = "";
-  if (lastMessage) {
+
+  if (
+    lastMessage
+  ) {
     continuity =
       " จากที่คุณเล่าก่อนหน้านี้ " +
-      lastMessage.slice(0, 40) +
+      lastMessage
+        .slice(0, 40) +
       "...";
   }
 
-  return baseReply + continuity + contextInfo;
+  return (
+    baseReply +
+    continuity +
+    contextInfo
+  );
 }
 
 /* =========================
-   🧵 UPDATE MEMORY
+   🧵 MEMORY UPDATE
 ========================= */
-function updateMemory(user_id, message) {
-  if (!memory[user_id]) {
+function updateMemory(
+  user_id,
+  message
+) {
+
+  if (
+    !memory[user_id]
+  ) {
     memory[user_id] = [];
   }
 
-  memory[user_id].push(message);
+  memory[user_id]
+    .push(message);
 
-  if (memory[user_id].length > MAX_MEMORY) {
-    memory[user_id].shift();
+  if (
+    memory[user_id]
+      .length >
+    MAX_MEMORY
+  ) {
+    memory[user_id]
+      .shift();
   }
 }
 
 /* =========================
-   🚀 API
+   🚀 CHAT API
 ========================= */
-app.post("/chat", (req, res) => {
-  const { message, user_id = "default" } = req.body;
+app.post(
+  "/chat",
+  (req, res) => {
 
-  const mood = analyzeMood(message);
+    const {
+      message,
+      user_id = "default"
+    } = req.body;
 
-  const contexts =
-    findBestContexts(message);
+    const mood =
+      analyzeMood(
+        message
+      );
 
-  const reply = generateReply({
-    message,
-    mood,
-    contexts,
-    user_id
-  });
+    const contexts =
+      findBestContexts(
+        message
+      );
 
-  updateMemory(user_id, message);
+    const reply =
+      generateReply({
+        mood,
+        contexts,
+        user_id
+      });
 
-  res.json({
-    reply
-  });
-});
+    updateMemory(
+      user_id,
+      message
+    );
+
+    res.json({
+      reply
+    });
+
+  }
+);
+
+/* =========================
+   👍 FEEDBACK API
+========================= */
+app.post(
+  "/feedback",
+  (req, res) => {
+
+    const {
+      user_id,
+      question,
+      reply,
+      rating
+    } = req.body;
+
+    const item = {
+      user_id,
+      question,
+      reply,
+      rating,
+      timestamp:
+        Date.now()
+    };
+
+    feedbackData.push(
+      item
+    );
+
+    fs.writeFileSync(
+      FEEDBACK_FILE,
+      JSON.stringify(
+        feedbackData,
+        null,
+        2
+      )
+    );
+
+    res.json({
+      success: true
+    });
+
+  }
+);
 
 /* =========================
    ▶ START SERVER
@@ -234,10 +414,15 @@ app.post("/chat", (req, res) => {
 await loadKnowledge();
 
 const PORT =
-  process.env.PORT || 3000;
+  process.env.PORT ||
+  3000;
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    `🚀 API running on port ${PORT}`
-  );
-});
+app.listen(
+  PORT,
+  "0.0.0.0",
+  () => {
+    console.log(
+      `🚀 API running on port ${PORT}`
+    );
+  }
+);
